@@ -1,20 +1,44 @@
 #include <ATen/Functions.h>
-#include <ATen/core/ITensorList.h>
+#include <ATen/core/IList.h>
+#include <ATen/core/Tensor.h>
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <iterator>
 
 using namespace c10;
 
 static std::vector<at::Tensor> get_tensor_vector() {
-  std::vector<at::Tensor> boxed;
+  std::vector<at::Tensor> tensors;
   const size_t SIZE = 5;
   for (size_t i = 0; i < SIZE; i++) {
-    boxed.push_back(at::empty({0}));
+    tensors.emplace_back(at::empty({0}));
   }
-  return boxed;
+  return tensors;
+}
+
+static std::vector<optional<at::Tensor>> get_boxed_opt_tensor_vector() {
+  std::vector<optional<at::Tensor>> optional_tensors;
+  const size_t SIZE = 5;
+  for (size_t i = 0; i < SIZE * 2; i++) {
+    auto opt_tensor = (i % 2 == 0) ? optional<at::Tensor>(at::empty({0})) : nullopt;
+    optional_tensors.emplace_back(opt_tensor);
+  }
+  return optional_tensors;
+}
+
+static std::vector<at::OptionalTensorRef> get_unboxed_opt_tensor_vector() {
+  std::vector<at::OptionalTensorRef> optional_tensors;
+  const size_t SIZE = 5;
+  for (size_t i = 0; i < SIZE * 2; i++) {
+    auto opt_tensor = (i % 2 == 0) ? at::OptionalTensorRef(at::empty({0}))
+                                   : at::OptionalTensorRef();
+    optional_tensors.emplace_back(opt_tensor);
+  }
+  return optional_tensors;
 }
 
 template <typename T>
-void check_elements_same(ITensorList list, const T& thing) {
+void check_elements_same(at::ITensorList list, const T& thing) {
   EXPECT_EQ(thing.size(), list.size());
   for (size_t i = 0; i < thing.size(); i++) {
     EXPECT_TRUE(thing[i].is_same(list[i]));
@@ -22,7 +46,7 @@ void check_elements_same(ITensorList list, const T& thing) {
 }
 
 TEST(ITensorListTest, CtorEmpty_IsNone_Throws) {
-  ITensorList list;
+  at::ITensorList list;
   EXPECT_TRUE(list.isNone());
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
   EXPECT_THROW(list.size(), c10::Error);
@@ -31,30 +55,31 @@ TEST(ITensorListTest, CtorEmpty_IsNone_Throws) {
 TEST(ITensorListTest, CtorBoxed_IsBoxed) {
   auto vec = get_tensor_vector();
   List<at::Tensor> boxed(vec);
-  ITensorList list(boxed);
+  at::ITensorList list(boxed);
   EXPECT_TRUE(list.isBoxed());
 }
 
 TEST(ITensorListTest, CtorUnboxed_IsUnboxed) {
   auto vec = get_tensor_vector();
   at::ArrayRef<at::Tensor> unboxed(vec);
-  ITensorList list(unboxed);
+  at::ITensorList list(unboxed);
   EXPECT_TRUE(list.isUnboxed());
 }
 
 TEST(ITensorListTest, CtorUnboxedIndirect_IsUnboxed) {
   auto vec = get_tensor_vector();
-  auto check_is_unboxed = [](ITensorList list) {
+  auto check_is_unboxed = [](at::ITensorList list) {
     EXPECT_TRUE(list.isUnboxed());
   };
-  check_is_unboxed(vec[0]);
-  check_is_unboxed({vec.data(), vec.size()});
-  check_is_unboxed({&*vec.begin(), &*vec.end()});
+  check_is_unboxed(at::ITensorList{vec[0]});
+  check_is_unboxed(at::ITensorList{vec.data(), vec.size()});
+  check_is_unboxed(at::ITensorList{&*vec.begin(), &*vec.end()});
   check_is_unboxed(vec);
+  check_is_unboxed({vec[0], vec[1], vec[2]});
 }
 
 TEST(ITensorListTest, CtorTemp_IsUnboxed) {
-  auto check_is_unboxed = [](ITensorList list) {
+  auto check_is_unboxed = [](at::ITensorList list) {
     EXPECT_TRUE(list.isUnboxed());
   };
 
@@ -67,7 +92,7 @@ TEST(ITensorListTest, Boxed_GetConstRefTensor) {
   // Using 'const' here, so that 'operator[]' returns
   // a 'Tensor' reference (plus, we don't need to mutate it here).
   const List<at::Tensor> boxed(vec);
-  ITensorList list(boxed);
+  at::ITensorList list(boxed);
   static_assert(
       std::is_same<decltype(list[0]), const at::Tensor&>::value,
       "Accessing elements from List<Tensor> through a ITensorList should be const references.");
@@ -77,7 +102,7 @@ TEST(ITensorListTest, Boxed_GetConstRefTensor) {
 
 TEST(ITensorListTest, Unboxed_GetConstRefTensor) {
   auto vec = get_tensor_vector();
-  ITensorList list(vec);
+  at::ITensorList list(vec);
   static_assert(
       std::is_same<decltype(list[0]), const at::Tensor&>::value,
       "Accessing elements from ArrayRef<Tensor> through a ITensorList should be const references.");
@@ -98,14 +123,18 @@ TEST(ITensorListTest, Unboxed_Equal) {
 
 TEST(ITensorListTest, UnboxedIndirect_Equal) {
   auto vec = get_tensor_vector();
-  check_elements_same(vec[0], std::vector<at::Tensor>{vec[0]});
-  check_elements_same({vec.data(), vec.size()}, vec);
-  check_elements_same({&*vec.begin(), &*vec.end()}, vec);
+  // Explicit constructors
+  check_elements_same(at::ITensorList{vec[0]}, std::vector<at::Tensor>{vec[0]});
+  check_elements_same(at::ITensorList{vec.data(), vec.size()}, vec);
+  check_elements_same(at::ITensorList{&*vec.begin(), &*vec.end()}, vec);
+  // Vector constructor
   check_elements_same(vec, vec);
+  // InitializerList constructor
+  check_elements_same({vec[0], vec[1], vec[2]}, std::vector<at::Tensor>{vec[0], vec[1], vec[2]});
 }
 
 TEST(ITensorListIteratorTest, CtorEmpty_ThrowsError) {
-  ITensorListIterator it;
+  at::ITensorListIterator it;
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
   EXPECT_THROW(*it, c10::Error);
 }
@@ -113,20 +142,20 @@ TEST(ITensorListIteratorTest, CtorEmpty_ThrowsError) {
 TEST(ITensorListIteratorTest, Boxed_GetFirstElement) {
   auto vec = get_tensor_vector();
   const List<at::Tensor> boxed(vec);
-  ITensorList list(boxed);
+  at::ITensorList list(boxed);
   EXPECT_TRUE(boxed[0].is_same(*list.begin()));
 }
 
 TEST(ITensorListIteratorTest, Unboxed_GetFirstElement) {
   auto vec = get_tensor_vector();
-  ITensorList list(vec);
+  at::ITensorList list(vec);
   EXPECT_TRUE(vec[0].is_same(*list.begin()));
 }
 
 TEST(ITensorListIteratorTest, Boxed_Equality) {
   auto vec = get_tensor_vector();
   List<at::Tensor> boxed(vec);
-  ITensorList list(boxed);
+  at::ITensorList list(boxed);
   EXPECT_EQ(list.begin(), list.begin());
   EXPECT_NE(list.begin(), list.end());
   EXPECT_NE(list.end(), list.begin());
@@ -135,7 +164,7 @@ TEST(ITensorListIteratorTest, Boxed_Equality) {
 
 TEST(ITensorListIteratorTest, Unboxed_Equality) {
   auto vec = get_tensor_vector();
-  ITensorList list(vec);
+  at::ITensorList list(vec);
   EXPECT_EQ(list.begin(), list.begin());
   EXPECT_NE(list.begin(), list.end());
   EXPECT_NE(list.end(), list.begin());
@@ -145,7 +174,7 @@ TEST(ITensorListIteratorTest, Unboxed_Equality) {
 TEST(ITensorListIteratorTest, Boxed_Iterate) {
   auto vec = get_tensor_vector();
   const List<at::Tensor> boxed(vec);
-  ITensorList list(boxed);
+  at::ITensorList list(boxed);
   size_t i = 0;
   for (auto it = list.begin(); it != list.end(); ++it) {
     EXPECT_TRUE(boxed[i].is_same(*it));
@@ -156,10 +185,64 @@ TEST(ITensorListIteratorTest, Boxed_Iterate) {
 
 TEST(ITensorListIteratorTest, Unboxed_Iterate) {
   auto vec = get_tensor_vector();
-  ITensorList list(vec);
+  at::ITensorList list(vec);
   size_t i = 0;
   for (auto it = list.begin(); it != list.end(); it++) {
     EXPECT_TRUE(vec[i].is_same(*it));
+    i++;
+  }
+  EXPECT_EQ(i, list.size());
+}
+
+TEST(IOptTensorRefListTest, Boxed_Iterate) {
+  auto vec = get_boxed_opt_tensor_vector();
+  const List<optional<at::Tensor>> boxed(vec);
+  at::IOptTensorRefList list(boxed);
+  for (size_t i = 0; i < list.size(); i++) {
+    EXPECT_EQ(boxed[i].has_value(), list[i].has_value());
+    if (list[i].has_value()) {
+      EXPECT_TRUE((*boxed[i]).is_same(*list[i]));
+    }
+  }
+}
+
+TEST(IOptTensorRefListTest, Boxed_IterateRange) {
+  auto vec = get_boxed_opt_tensor_vector();
+  const List<optional<at::Tensor>> boxed(vec);
+  at::IOptTensorRefList list(boxed);
+  size_t i = 0;
+  for (const auto t : list) {
+    EXPECT_EQ(boxed[i].has_value(), t.has_value());
+    if (t.has_value()) {
+      EXPECT_TRUE((*boxed[i]).is_same(*t));
+    }
+    i++;
+  }
+  EXPECT_EQ(i, list.size());
+}
+
+TEST(IOptTensorRefListTest, Unboxed_Iterate) {
+  auto vec = get_unboxed_opt_tensor_vector();
+  at::ArrayRef<at::OptionalTensorRef> unboxed(vec);
+  at::IOptTensorRefList list(unboxed);
+  for (size_t i = 0; i < list.size(); i++) {
+    EXPECT_EQ(unboxed[i].has_value(), list[i].has_value());
+    if (list[i].has_value()) {
+      EXPECT_TRUE((*unboxed[i]).is_same(*list[i]));
+    }
+  }
+}
+
+TEST(IOptTensorRefListTest, Unboxed_IterateRange) {
+  auto vec = get_unboxed_opt_tensor_vector();
+  at::ArrayRef<at::OptionalTensorRef> unboxed(vec);
+  at::IOptTensorRefList list(unboxed);
+  size_t i = 0;
+  for (const auto t : list) {
+    EXPECT_EQ(unboxed[i].has_value(), t.has_value());
+    if (t.has_value()) {
+      EXPECT_TRUE((*unboxed[i]).is_same(*t));
+    }
     i++;
   }
   EXPECT_EQ(i, list.size());
