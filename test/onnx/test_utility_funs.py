@@ -15,7 +15,7 @@ from torch.onnx.symbolic_helper import (_set_opset_version,
 import torch.utils.cpp_extension
 from test_pytorch_common import (skipIfUnsupportedMinOpsetVersion,
                                  skipIfUnsupportedMaxOpsetVersion)
-import caffe2.python.onnx.backend as backend
+# import caffe2.python.onnx.backend as backend
 from verify import verify
 
 import torchvision
@@ -672,11 +672,11 @@ class TestUtilityFuns_opset9(_BaseTestCase):
         celu_funcs = [f for f in funcs if f.name == "CELU"]
         self.assertEqual(len(celu_funcs), 1)
         self.assertEqual(celu_funcs[0].domain, "torch.nn.modules.activation")
-        self.assertEqual(len(celu_funcs[0].attribute), 1)
+        self.assertEqual(len(celu_funcs[0].attribute), 3)
         ln_funcs = [f for f in funcs if f.name == "LayerNorm"]
         self.assertEqual(len(ln_funcs), 1)
         self.assertEqual(ln_funcs[0].domain, "torch.nn.modules.normalization")
-        self.assertEqual(len(ln_funcs[0].attribute), 1)
+        self.assertEqual(len(ln_funcs[0].attribute), 3)
 
         # Check local function nodes
         nodes = onnx_model.graph.node
@@ -684,10 +684,10 @@ class TestUtilityFuns_opset9(_BaseTestCase):
         ln_ns = [n for n in nodes if n.op_type == "LayerNorm"]
         self.assertEqual(len(celu_ns), 2)
         self.assertEqual(celu_ns[0].domain, "torch.nn.modules.activation")
-        self.assertEqual(len(celu_ns[0].attribute), 1)
+        self.assertEqual(len(celu_ns[0].attribute), 3)
         self.assertEqual(len(ln_ns), 3)
         self.assertEqual(ln_ns[0].domain, "torch.nn.modules.normalization")
-        self.assertEqual(len(ln_ns[0].attribute), 1)
+        self.assertEqual(len(ln_ns[0].attribute), 3)
 
         # Export specified modules.
         f = io.BytesIO()
@@ -1055,6 +1055,7 @@ class TestUtilityFuns_opset9(_BaseTestCase):
                 return y
 
         x = torch.tensor([1, 2])
+        import caffe2.python.onnx.backend as backend
         verify(MyModel(), x, backend, do_constant_folding=False)
 
     def test_fuse_conv_bn(self):
