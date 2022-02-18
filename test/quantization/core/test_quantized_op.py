@@ -4140,7 +4140,7 @@ class TestQuantizedConv(TestCase):
            Y_scale=st.floats(4.2, 5.6),
            Y_zero_point=st.sampled_from([0]),
            # TODO: enable bias
-           use_bias=st.sampled_from([False]),
+           use_bias=st.booleans(),
            # TODO: enable relu
            use_relu=st.sampled_from([False]),
            # TODO: enable channelwise
