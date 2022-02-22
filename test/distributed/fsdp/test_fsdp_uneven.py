@@ -61,11 +61,13 @@ class TestUnevenParamShard(FSDPTest):
         out.float().sum().backward()
         optim.step()
         optim.zero_grad()
-        get_full_params(model)
-        weight_out = model.module.weight.T.clone()
 
-        self.assertEqual(ref_forward_output_my_rank, out)
-        self.assertEqual(ref_weight_out, weight_out)
+        with model._summon_full_params():
+            torch.cuda.synchronize() # TODO: This is here because it was
+            # originally part of get_full_params(), debug why it is needed here.
+            weight_out = model.module.weight.T.clone()
+            self.assertEqual(ref_forward_output_my_rank, out)
+            self.assertEqual(ref_weight_out, weight_out)
 
 
 if __name__ == "__main__":
