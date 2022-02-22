@@ -19,6 +19,7 @@
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/autodiff.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/csrc/jit/runtime/graph_iterator.h>
 #include <torch/csrc/jit/runtime/operator.h>
 
 #include <torch/csrc/jit/ir/alias_analysis.h>
@@ -1709,6 +1710,13 @@ void guardFusionGroups(
     //         c. restore conditional constant to non-constant for fallback
     guardFusionGroup(fusion, fusion_value_to_runtime_size);
   }
+
+  if (GRAPH_DEBUG_ENABLED) {
+    GRAPH_DEBUG("Exporting all NVFuser fusions:");
+    for (Node* fusion : fusions) {
+      GRAPH_EXPORT("", fusion->g(attr::Subgraph));
+    }
+  }
 }
 
 // rewire const integer index & empty byte-typed reserve space tensor outputs,
@@ -2233,7 +2241,6 @@ bool removeInplaceOperations(const std::shared_ptr<Graph>& graph) {
   return RemoveTensorMutation(
       graph, [&](Node* node) { return inplace_ops.count(node->kind()) != 0; });
 }
-
 } // anonymous namespace
 
 void CudaFuseGraph(std::shared_ptr<Graph>& graph) {
